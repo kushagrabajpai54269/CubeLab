@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-background: 255 255 255;
+  --color-foreground: 23 23 23;
+  --color-surface: 246 246 248;
+  --color-border: 228 228 231;
+}
+
+.dark {
+  /* deep blue-gray / violet-gray, never pure black — D-010 */
+  --color-background: 17 20 28;
+  --color-foreground: 237 237 240;
+  --color-surface: 26 30 41;
+  --color-border: 42 47 61;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  @apply bg-background text-foreground;
+}
