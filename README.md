@@ -1,32 +1,54 @@
-# CubeLab — Phase 0 Skeleton
+# CubeLab
 
-Full site skeleton per the approved architecture (see the project knowledge-base
-docs: Architecture Notes, Decision Log D-001–D-024).
+A Rubik's Cube web app: learn, solve, practice, and track your progress. Built
+with Next.js 15 (App Router), React 19, TypeScript (strict), Tailwind, Zustand,
+and React Three Fiber (for the 3D work still ahead).
 
-## What's here
-- Every page route, via Next.js App Router (Home has a real hero; everything
-  else is a structured placeholder, D-021)
-- Design tokens wired into Tailwind: Geist, Lucide, 8px-based spacing,
-  Electric Blue accent, dark mode in blue-gray/violet-gray (D-010)
-- Zustand stores for theme and command-palette state
-- `StorageAdapter` abstraction (D-002) — theme preference is its first real
-  consumer, nothing touches `localStorage` directly outside `LocalStorageAdapter`
-- Extensible Command Palette (Ctrl/Cmd+K) built on a `CommandSource` registry
-  (D-022): navigation and theme-toggle sources are live; algorithm-search and
-  learning-topic sources are registered now and return no results until
-  Phase F and the content-authoring phase wire in real data
-- Starter unit tests (`lib/utils.test.ts`,
-  `lib/services/storage/LocalStorageAdapter.test.ts`) establishing the
-  co-located test convention (D-017)
+**Status: Phase A and Phase B complete and manually accepted.** See
+`docs/Roadmap.md` for what's built, what's next, and the full phase plan —
+including the planned 3D cube renderer and Sandbox mode.
 
-## What's not here yet
-Cube engine, solvers, 3D rendering, real Learn/About/FAQ copy, auth,
-analytics — all per the Roadmap's later phases.
+## What's implemented
+
+**Phase A — core cube library** (`lib/cube/`): `CubeState`, the Move Engine,
+the Notation Parser, and the Validator — the dependency-free computational
+foundation everything else builds on.
+
+**Phase B — Solver input experience** (`/solver/health`): a 2D cube-net input
+UI with color painting, undo/redo, a live legality Health Check with
+problem-sticker highlighting, and facelet-string / algorithm import-export.
+This 2D net is a permanent alternative input/diagnostic tool, not a
+placeholder for the eventual 3D interface (see the Roadmap).
+
+Cube engine, solvers, 3D rendering, real Learn/About/FAQ copy, auth, and
+analytics are all tracked in `docs/Roadmap.md`.
+
+## Project knowledge base
+
+Living documentation lives in `docs/`:
+- `Roadmap.md` — phase plan, including the 3D Solver and Sandbox requirements
+- `Decision-Log.md` — numbered architectural decisions (D-001 onward)
+- `Architecture-Notes.md` — how the pieces fit together
+- `Development-Journal.md` — session-by-session narrative
+- `Testing-Log.md` — test coverage by area
+- `Known-Issues.md` — open bugs and technical debt
+- `Refactoring-Log.md` — notable refactors and why
 
 ## Getting started
+
 ```
 npm install
-npm run dev    # http://localhost:3000
-npm test
+npm run dev         # http://localhost:3000
+npm test            # vitest, single run
+npm run test:watch  # vitest, watch mode
+npm run typecheck   # tsc --noEmit — see docs/Known-Issues.md for current status
 npm run lint
 ```
+
+To regenerate the Move Engine / Validator's geometric data tables (only ever
+needed if `scripts/derive-move-tables.mjs` itself changes):
+```
+node scripts/derive-move-tables.mjs
+```
+This prints the derived `BASE_PERMUTATIONS`, `CORNER_FACELETS`, and
+`EDGE_FACELETS` for manual copy into `lib/cube/tables.ts` — see D-027.

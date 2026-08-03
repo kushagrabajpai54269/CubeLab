@@ -31,7 +31,10 @@ export function parseMove(token: string): Move | null {
   if (!match) return null
 
   const [, letter, modifier] = match
-  if (!FACE_LETTERS.has(letter)) return null // e.g. lowercase, M/E/S, x/y/z
+  // `letter` is always captured by MOVE_PATTERN's mandatory first group once
+  // `match` succeeds; the `!letter` half of this check is a genuine guard
+  // (not an assertion) that also satisfies noUncheckedIndexedAccess.
+  if (!letter || !FACE_LETTERS.has(letter)) return null // e.g. lowercase, M/E/S, x/y/z
 
   const face = letter as Face
   const turns: 1 | 2 | 3 = modifier === '2' ? 2 : modifier === "'" ? 3 : 1

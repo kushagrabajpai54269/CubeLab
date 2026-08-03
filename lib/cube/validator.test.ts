@@ -15,39 +15,72 @@ function withOneFaceletChanged(mutate: (flat: string[]) => void): CubeState {
   return unflattenFacelets(flat as CubeState['facelets']['U'], 3)
 }
 
+/**
+ * Genuine bounds-checked access for these test-construction helpers, which
+ * deliberately index into CORNER_FACELETS/EDGE_FACELETS/flat by
+ * caller-supplied slot numbers. Under noUncheckedIndexedAccess that's
+ * `T | undefined`; every call site here only ever passes slots/indices that
+ * are valid by construction (hardcoded small ints, or indices sourced from
+ * CORNER_FACELETS/EDGE_FACELETS themselves), so this never actually throws
+ * — but a real runtime check is a stronger, more honest guarantee than a
+ * blind non-null assertion at each of the many call sites below.
+ */
+function at<T>(arr: readonly T[], index: number): T {
+  const value = arr[index]
+  if (value === undefined) {
+    throw new Error(`Index ${index} out of bounds (length ${arr.length})`)
+  }
+  return value
+}
+
 function withCornersSwapped(slotA: number, slotB: number): CubeState {
   return withOneFaceletChanged((flat) => {
-    const a = CORNER_FACELETS[slotA]
-    const b = CORNER_FACELETS[slotB]
+    const a = at(CORNER_FACELETS, slotA)
+    const b = at(CORNER_FACELETS, slotB)
     for (let k = 0; k < 3; k++) {
-      ;[flat[a[k]], flat[b[k]]] = [flat[b[k]], flat[a[k]]]
+      const ak = at(a, k)
+      const bk = at(b, k)
+      const temp = at(flat, ak)
+      flat[ak] = at(flat, bk)
+      flat[bk] = temp
     }
   })
 }
 
 function withEdgesSwapped(slotA: number, slotB: number): CubeState {
   return withOneFaceletChanged((flat) => {
-    const a = EDGE_FACELETS[slotA]
-    const b = EDGE_FACELETS[slotB]
+    const a = at(EDGE_FACELETS, slotA)
+    const b = at(EDGE_FACELETS, slotB)
     for (let k = 0; k < 2; k++) {
-      ;[flat[a[k]], flat[b[k]]] = [flat[b[k]], flat[a[k]]]
+      const ak = at(a, k)
+      const bk = at(b, k)
+      const temp = at(flat, ak)
+      flat[ak] = at(flat, bk)
+      flat[bk] = temp
     }
   })
 }
 
 function withCornerTwisted(slot: number, turns: 1 | 2): CubeState {
   return withOneFaceletChanged((flat) => {
-    const [p0, p1, p2] = CORNER_FACELETS[slot]
-    const c = [flat[p0], flat[p1], flat[p2]]
-    const rotated = turns === 1 ? [c[2], c[0], c[1]] : [c[1], c[2], c[0]]
-    ;[flat[p0], flat[p1], flat[p2]] = rotated
+    const [p0, p1, p2] = at(CORNER_FACELETS, slot)
+    const c0 = at(flat, p0)
+    const c1 = at(flat, p1)
+    const c2 = at(flat, p2)
+    const rotated: [string, string, string] = turns === 1 ? [c2, c0, c1] : [c1, c2, c0]
+    flat[p0] = rotated[0]
+    flat[p1] = rotated[1]
+    flat[p2] = rotated[2]
   })
 }
 
 function withEdgeFlipped(slot: number): CubeState {
   return withOneFaceletChanged((flat) => {
-    const [p0, p1] = EDGE_FACELETS[slot]
-    ;[flat[p0], flat[p1]] = [flat[p1], flat[p0]]
+    const [p0, p1] = at(EDGE_FACELETS, slot)
+    const c0 = at(flat, p0)
+    const c1 = at(flat, p1)
+    flat[p0] = c1
+    flat[p1] = c0
   })
 }
 
@@ -57,15 +90,15 @@ function withImpossibleCorner(slot: number): CubeState {
   // invariant, which is realistic: a user mis-painting a corner this way
   // would trip both checks, not just one.
   return withOneFaceletChanged((flat) => {
-    const [p0, p1] = CORNER_FACELETS[slot]
-    flat[p1] = flat[p0]
+    const [p0, p1] = at(CORNER_FACELETS, slot)
+    flat[p1] = at(flat, p0)
   })
 }
 
 function withImpossibleEdge(slot: number): CubeState {
   return withOneFaceletChanged((flat) => {
-    const [p0, p1] = EDGE_FACELETS[slot]
-    flat[p1] = flat[p0]
+    const [p0, p1] = at(EDGE_FACELETS, slot)
+    flat[p1] = at(flat, p0)
   })
 }
 

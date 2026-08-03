@@ -20,7 +20,10 @@ export function applyMove(state: CubeState, move: Move): CubeState {
   let flat = flattenFacelets(state)
   const perm = BASE_PERMUTATIONS[move.face]
   for (let t = 0; t < move.turns; t++) {
-    flat = perm.map((src) => flat[src])
+    // Non-null: `src` is guaranteed a valid index (0-53) into `flat` by
+    // BASE_PERMUTATIONS' geometric derivation, which self-checks structural
+    // bijectivity (D-027) — not something tsc can prove statically.
+    flat = perm.map((src) => flat[src]!)
   }
   return unflattenFacelets(flat, state.size)
 }

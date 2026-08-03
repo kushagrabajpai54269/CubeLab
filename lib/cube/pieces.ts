@@ -67,14 +67,30 @@ export function identifyEdge(colors: ColorPair): number | null {
   return idx === -1 ? null : idx
 }
 
+/**
+ * Rotates a 3-tuple by `n` positions. Written with static (0/1/2) indices
+ * into a fixed-length tuple rather than a computed index, so it's provably
+ * safe to tsc under noUncheckedIndexedAccess, not just at runtime.
+ */
 function rotateTriple<T>(arr: readonly [T, T, T], n: number): [T, T, T] {
   const r = ((n % 3) + 3) % 3
-  return [arr[r], arr[(r + 1) % 3], arr[(r + 2) % 3]]
+  if (r === 0) return [arr[0], arr[1], arr[2]]
+  if (r === 1) return [arr[1], arr[2], arr[0]]
+  return [arr[2], arr[0], arr[1]]
 }
 
 /** 0, 1, or 2 — how many clockwise twists from "correctly oriented". */
 export function cornerOrientation(identity: number, colors: ColorTriple): number | null {
   const solved = SOLVED_CORNER_COLORS[identity]
+  // Genuine guard, not just a type satisfier: every caller in this codebase
+  // passes an `identity` already produced by identifyCorner (always 0-7), so
+  // this never actually triggers today — but if it ever did (an
+  // out-of-range identity), "couldn't determine an orientation" is the
+  // correct answer, which this function's own `| null` return already
+  // models, so this is a real behavior improvement, not just noise: an
+  // out-of-range identity previously would have thrown a TypeError inside
+  // rotateTriple instead of returning null.
+  if (!solved) return null
   for (let r = 0; r < 3; r++) {
     const rotated = rotateTriple(solved, r)
     if (rotated[0] === colors[0] && rotated[1] === colors[1] && rotated[2] === colors[2]) return r
@@ -85,6 +101,11 @@ export function cornerOrientation(identity: number, colors: ColorTriple): number
 /** 0 (correct) or 1 (flipped). */
 export function edgeOrientation(identity: number, colors: ColorPair): number | null {
   const solved = SOLVED_EDGE_COLORS[identity]
+  // Same reasoning as cornerOrientation's guard above: never triggers with
+  // the identities this codebase actually passes (always 0-11 from
+  // identifyEdge), but turns a would-be TypeError on an out-of-range
+  // identity into the correct "couldn't determine" null.
+  if (!solved) return null
   if (solved[0] === colors[0] && solved[1] === colors[1]) return 0
   if (solved[0] === colors[1] && solved[1] === colors[0]) return 1
   return null
@@ -103,7 +124,11 @@ export function permutationParity(permutation: readonly number[]): 0 | 1 {
     let j = i
     while (!visited[j]) {
       visited[j] = true
-      j = permutation[j]
+      // Non-null: by contract `permutation` is a permutation of its own
+      // indices (0..length-1) — every caller passes identity arrays from
+      // identifyCorner/identifyEdge, which only ever produce values in that
+      // exact range, matching the array's own length.
+      j = permutation[j]!
       cycleLength++
     }
     transpositions += cycleLength - 1
