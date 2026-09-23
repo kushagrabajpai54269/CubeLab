@@ -92,10 +92,141 @@ logic, nothing specific to Beginner Method or CFOP.
   produced it).
 
 `lib/solver/` will remain the only shared code between Beginner Method
-(Phase C, Subsystems 1–6) and CFOP (Phase E) — each method's actual
+(Phase C, Subsystems 2–9) and CFOP (Phase E) — each method's actual
 solving logic (case recognition, algorithm selection) lives in its own
 module and plugs into `runStages` as a `StageSpec[]`, rather than either
 method reimplementing sequencing or input-validation itself.
+
+**Subsystem 1 (Input Validity Gate, D-044):** `runStages` is intentionally
+excluded from `lib/solver/index.ts`'s public barrel — `solveWithStages`
+(validate → clone → run) is the only way anything outside this module can
+execute stage-specific solving logic, so no future `SolverMethod`
+implementation can accidentally skip the gate. `runStages` remains
+exported directly from `stageRunner.ts` for this module's own tests.
+
+**Subsystem 2 (White Cross, D-045/D-046), `lib/solver/beginnerMethod/`:**
+the first actual solving logic, and the first Beginner-Method-specific
+module — deliberately separate from `lib/solver/`'s shared, method-agnostic
+root. Not yet wired into a `StageSpec`/`SolverMethod` — that assembly
+happens once more Beginner Method stages exist. Structure:
+- `geometry.ts` — pure derived layer/face/slot helpers (`layerOfSlot`,
+  `ownFaceOf`, `ringNeighborsOf`, `currentSlotOf`, `whiteFacingFaceOfSlot`),
+  all computed from `EDGE_FACELETS`/`SOLVED_EDGE_COLORS`, nothing hardcoded.
+- `insertionAlgorithms.ts` — the two terminal D-layer insertion algorithms
+  (facing-down: one own-face half-turn; facing-side: a 3-move sequence
+  through a ring-neighbor face), derived and self-checked against the real
+  Move Engine at module load, D-027-style — not memorized cube notation.
+  Facing-side needing a 3rd face was not assumed; it was proven necessary
+  by full orbit exhaustion under {own face, D} before being accepted.
+- `ejectAndAlign.ts` — gets a target edge to the D-layer (`ejectMoves`) and
+  aligns its column (`alignmentMoves`); also `isFaceHomeSolved`, the shared
+  placed-aware preference helper both this file and `insertionMoves.ts`
+  use to avoid unnecessarily disturbing an already-solved edge.
+- `insertionMoves.ts` — wires the D-045 algorithms together with the
+  placed-aware preference from `ejectAndAlign.ts`.
+- `whiteCross.ts` — `solveWhiteEdge` (eject → align → insert composition)
+  and `solveWhiteCross` (round-robin over the 4 target edges with a
+  mechanical, finite-state cycle-detection termination guarantee — not a
+  hand-proved round count, which an early implementation's real infinite
+  oscillation bug showed cannot be trusted on reasoning alone).
+
+**Subsystem 3 (First-Layer Corners, D-047/D-048), same directory:** the
+second stage, run after White Cross. Mirrors the edge module's shape:
+- `cornerGeometry.ts` — corner analogue of `geometry.ts`. Structurally
+  simpler than edges (only U/D layers, no third "E-layer" case) but with 3
+  orientation states instead of 2.
+- `cornerInsertionAlgorithms.ts` — the 3 terminal D-layer insertion
+  algorithms (facing-own1, facing-own2, facing-down), derived and
+  self-checked D-027-style. Unlike edges' facing-side, corners' facing-down
+  turned out fully preservable (a 5-move algorithm) once the derivation's
+  own goal test was corrected to require full preservation, not merely
+  "target solved" — an earlier, weaker goal test caused a real corner
+  oscillation once wired into the full solver, caught immediately by the
+  exhaustive test suite. Test fixtures for this self-verification are
+  built via direct facelet manipulation (the same surgical-construction
+  pattern `validator.test.ts`'s helpers use), not a move-based search —
+  this is a performance choice for the throwaway fixture only; the
+  algorithm itself remains entirely search-derived and replay-verified.
+- `cornerEjectAndAlign.ts` / `cornerInsertionMoves.ts` — eject, align, and
+  the placed-aware preference for the one eject case needing a foreign
+  face (the U-layer slot diagonally opposite a corner's home).
+- `firstLayerCorners.ts` — `solveOneCorner` and `solveFirstLayerCorners`.
+  The round-robin retry and cycle-detector (mirroring `whiteCross.ts`)
+  track **both** corner state and white-cross-edge state together, not
+  just corners: the diagonal-slot eject's foreign-face turn was found to
+  disturb a cross edge, with no repair path in an earlier version that
+  only tracked corners.
+
+**Subsystem 4 (Second-Layer Edges, D-049), same directory:** the third
+stage, run after White Cross and First-Layer Corners. Mirrors the earlier
+modules' shape, with two things genuinely different for this target type
+(only 2 facelets total, both own faces are side faces — no U/D own face
+the way corners have):
+- `secondLayerGeometry.ts` — `SECOND_LAYER_EDGE_IDENTITIES` (the 4 E-layer
+  target slots, derived by filtering `layerOfSlot`, not hand-typed) and
+  `matchedFaceAtSlot` — this stage's alignment concept: a D-layer edge only
+  touches one side face at a time, so "aligned" means rotating D until that
+  side facelet shows the color actually belonging to it, not "touches both
+  own faces" the way a corner's D-layer column does.
+- `secondLayerInsertionAlgorithms.ts` — a single derived, self-verified
+  8-move `{matchedFace, otherOwnFace, D}` algorithm per matched face,
+  D-027-style, full-preservation goal test (target + 2 siblings + full
+  cross + full first-layer corners) per the D-047 lesson.
+- `secondLayerEjectAndAlign.ts` / `secondLayerInsertionMoves.ts` — eject
+  and align. Every E-layer eject branch, including the one sharing exactly
+  one own face, is a genuine 2-way placed-aware choice between the slot's
+  2 faces — an earlier version wrongly treated the shared-face branch as
+  forced to a single candidate (mirroring D-048's corner design too
+  literally), which produced a real deterministic cycle once the longer
+  8-move insertion's higher collateral disturbance was in play (D-049).
+- `secondLayerEdges.ts` — `solveOneSecondLayerEdge` and
+  `solveSecondLayerEdges`. Unlike `whiteCross.ts`/`firstLayerCorners.ts`'s
+  fixed-order round-robin, this stage's round-robin greedily solves
+  whichever unsolved target currently causes the least collateral
+  disturbance to already-solved pieces, re-evaluated after every move —
+  fixed order (even rotated) was shown to hit a genuine period-4 cycle
+  here, unlike the earlier two stages. The mechanical cycle-detector
+  (tracking second-layer, cross, and corner state together) remains the
+  actual termination guarantee regardless.
+
+**Subsystem 5 (Last-Layer Orientation / 2-look OLL, D-050), same
+directory:** the fourth stage, run after Second-Layer Edges. The first
+stage to solve orientation only, not position — permutation is deferred to
+Subsystem 6 (PLL) — so, unlike every earlier stage, "solved" is tracked
+per D-layer slot rather than per piece identity (see `lastLayerGeometry
+.ts`'s own docstring). Structure:
+- `lastLayerGeometry.ts` — `LAST_LAYER_EDGE_SLOTS` / `LAST_LAYER_CORNER_
+  SLOTS` (the 4 D-layer slots of each type, derived by filtering
+  `layerOfSlot`/`layerOfCornerSlot`, not hand-typed), `isLastLayerEdge
+  Oriented` / `isLastLayerCornerOriented` (D-facelet shows D's own color),
+  and `oppositeSideFaceOf` (derived from `ringNeighborsOf`, not a
+  hand-typed F/B, L/R table).
+- `lastLayerEdgeOrientationAlgorithms.ts` — the edge-orientation parity
+  invariant (0, 2, or 4 of the 4 D-layer edges oriented) reduces the
+  problem to exactly 3 cases up to D rotation: Dot, Line, L-shape. Line
+  and L-shape each get a derived, self-verified algorithm (D-027-style,
+  bounded IDDFS search over `{D, F, R}`, full-preservation goal test);
+  Dot is solved by reducing to L-shape (apply its algorithm once, any
+  alignment) rather than a dedicated search. `classifyEdgeOrientation`
+  determines both the case and the D-rotation needed to align it,
+  empirically against the real Move Engine (not an assumed rotation
+  direction — the D-039 chirality lesson applied again).
+- `lastLayerCornerOrientationAlgorithms.ts` — a single general
+  corner-orientation "step" algorithm (a real Sune analogue), found by
+  forward-searching from the solved cube for the first reachable,
+  edge-orientation-preserving corner disturbance and inverting it — not a
+  per-case table. A hand-constructed target fixture and a hand-translated
+  "D-for-U" Sune substitution were both tried first and both failed for
+  reasons recorded in D-050 (reachability and chirality respectively);
+  forward-search-then-invert sidesteps both.
+- `lastLayerOrientation.ts` — `solveLastLayerEdgeOrientation` (deterministic,
+  at most 2 algorithm applications) then `solveLastLayerCornerOrientation`
+  (a bounded round-level search — branching 4, over which D-rotation
+  offset to apply the step algorithm at each round — since pure greedy
+  hill-climbing was shown to converge for only 5 of the 27 legal
+  corner-twist patterns). No outer cycle-detected loop is needed the way
+  Subsystems 2-4 need one: neither step here re-disturbs anything the
+  other step, or the completed first two layers, already fixed.
 
 ## Generic utilities (`lib/history/`)
 
@@ -151,5 +282,5 @@ so far.
 
 ## Current test count
 
-163 tests across 14 files, all passing — see `Testing-Log.md` for the
+275 tests across 33 files, all passing — see `Testing-Log.md` for the
 full per-file breakdown.

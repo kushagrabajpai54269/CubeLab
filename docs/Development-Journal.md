@@ -358,3 +358,144 @@ The shared solver contract and Case-Solving Stage Runner infrastructure Phase C'
 
 **Remaining work:**
 - Phase C, Subsystem 1 (White Cross) — not started. This entry's infrastructure is deliberately solving-logic-free; the first real Beginner Method stage is the next piece of work, pending review of this subsystem.
+
+---
+
+## Entry 18 — 2026-08-03 — Phase C, Subsystem 1: Input Validity Gate
+
+**What was built:**
+Reviewed Subsystem 0's existing `rejectIfInvalid`/`solveWithStages` against Subsystem 1's stated requirements and found the gate itself already fully implemented and tested — Subsystem 0 already validates every solve request before cloning or running any stage, using the existing Validator, via the `SolveFailure` contract, with the full `ValidationResult` preserved. Rather than re-implementing or duplicating that logic to manufacture new Subsystem 1 code, identified the one genuine gap worth closing: `runStages` (the sequencer, with no validity gate of its own) was re-exported from `lib/solver/index.ts`'s public barrel right alongside the gated `solveWithStages`, so nothing *structurally* prevented a future caller outside `lib/solver/` from running stages while skipping validation — only the fact that nothing currently does. Closed this by removing `runStages` from the public barrel (it remains exported from `stageRunner.ts` directly, for this module's own tests), making `solveWithStages` the only sanctioned entry point into stage execution for any external code. Recorded as D-044. Added 2 tests closing coverage gaps Subsystem 0's suite hadn't hit: a legal scrambled cube reaching stage execution (not just a solved one), and a positive assertion that valid input runs every stage, symmetric to the existing "invalid input runs none" tests.
+
+**Problems encountered:**
+- The main risk here wasn't a bug, it was scope creep: Subsystem 1 was specified as its own subsystem before Subsystem 0's actual design was settled, and by the time Subsystem 0 shipped, its natural implementation (`solveWithStages`) had already absorbed what Subsystem 1 was meant to do. Manufacturing a separate, parallel "gate" module or duplicating `rejectIfInvalid`'s logic just to have distinct Subsystem-1 code would have reintroduced exactly the two-copies-of-one-fact problem D-043 was designed to eliminate. Named this directly rather than padding the subsystem with redundant work.
+
+**How they were solved:**
+- Treated "is there a genuine architectural flaw" (explicitly permitted by the task's own instructions) as the actual question, rather than assuming there must be substantial new code to write. The export-surface gap was real, found by asking "what stops a *future* caller from doing this wrong," not by finding anything currently broken.
+
+**Lessons learned:**
+- A subsystem boundary drawn during planning doesn't always map cleanly onto how the implementation naturally falls out — Subsystem 0's design already answered "where does validation happen," and forcing Subsystem 1 to be a large separate deliverable regardless would have been optimizing for the plan's shape instead of the codebase's actual needs.
+
+**Remaining work:**
+- Phase C, Subsystem 2 (White Cross) — not started. `runStages`/`solveWithStages` are now fully closed off as the only path into stage execution; the first real Beginner Method `StageSpec` is the next piece of work.
+
+---
+
+## Entry 19 — 2026-08-06 — Phase C, Subsystem 2: White Cross (design investigation + implementation)
+
+**What was built:**
+Before writing any production code, ran an extensive empirical investigation against the real Move Engine rather than trusting the originally-proposed design. This found and corrected two real, non-obvious defects: (1) the assumption that "D-layer, aligned, white facing the side" could be solved using only {own face, D} was **mathematically wrong** — proven via full orbit exhaustion, not just insufficient search depth — requiring a genuine third face; (2) an initial implementation without awareness of which edges were already solved produced a real, reproducible **infinite oscillation** between two edges, caught by a 500-trial randomized fuzz run and root-caused by manual step-by-step tracing. Both are recorded as D-045 and D-046. Implemented incrementally with tests at each step: `geometry.ts` (pure derived layer/face/slot helpers, nothing hardcoded), `insertionAlgorithms.ts` (the two D-027-style self-verified terminal algorithms), `ejectAndAlign.ts` (the eject/align procedures plus the placed-aware preference helper), `insertionMoves.ts` (wires the preference into insertion), `whiteCross.ts` (`solveWhiteEdge` composition and `solveWhiteCross`'s round-robin loop with a mechanical cycle-detection termination guarantee). 31 new tests across 5 files, following the same exhaustive-deterministic-coverage style `validator.legality.test.ts` established (D-039) rather than unseeded fuzzing, plus one bounded, **seeded** (reproducible) 2000-trial randomized fuzz test as an additional confidence layer.
+
+**Problems encountered:**
+- The "facing side" impossibility: found via exhaustive orbit enumeration (7 reachable states from a real constructed facing-side position under {own face, D}, never including solved) rather than assumed. This directly falsified part of the originally-approved design.
+- The oscillation bug: `insertionMoves`' search deterministically preferred the same foreign face every time with no regard for already-placed edges; two edges kept re-disturbing each other forever. Caught by fuzzing at 500 trials — the exhaustive single-edge test suite (24 states × 4 identities, all passing) could not have caught this, since it only exercises one edge at a time and the defect is a genuine 2-edge interaction.
+- Two earlier attempts at a "provably eliminate bump-recovery entirely" restructuring (a 2-phase eject-all-then-insert-all design) were investigated and found to not actually hold once the "facing side needs a foreign face" fact was established — insertion itself, not just ejection, can require disturbing an already-placed edge, so bump-and-recovery is retained by necessity, not convenience, exactly as the fallback instruction anticipated.
+- Along the way, a large-scale (10,000-trial) fuzz run was interrupted mid-edit and never actually completed; its would-be results are explicitly not reported anywhere, and the investigation instead relied on the smaller runs that did complete (3000, then 2000 trials in the final production test) plus the mechanical guarantee below.
+
+**How they were solved:**
+- Re-verified every assumption against the real Move Engine via constructed test states and bounded search, rather than trusting standard cube notation.
+- Fixed the oscillation by making both `ejectMoves` and `insertionMoves` prefer a not-yet-solved candidate face when a genuine choice exists.
+- Added a **mechanical, not statistical, termination guarantee**: the state relevant to `solveWhiteCross`'s round-robin loop (each target's slot + facing) is finite, the procedure is deterministic, so every visited state is tracked and a repeat is treated as a definitive, loud failure rather than a silent hang. This is what makes the termination claim a guarantee rather than an inference from "it worked in testing."
+
+**Lessons learned:**
+- The exhaustive single-piece test suite (96 configurations, all passing) gave strong confidence in a defect-free design that was nonetheless hiding a real multi-piece interaction bug — a direct, concrete illustration of why this project's testing strategy always pushes past "each piece works in isolation" toward full end-to-end replay and randomized multi-piece scenarios (the same lesson D-039 taught for the Validator, now confirmed again for the solver).
+- A single 500-trial fuzz run caught something a much larger exhaustive-but-narrow test suite missed; conversely, once fixed, the deeper structural reasoning (why the fix works, why termination is guaranteed) mattered more than the fuzz trial count itself — the mechanical cycle-detector, not the 2000-trial count, is what actually backs the termination claim.
+
+**Remaining work:**
+- Phase C, Subsystem 3 (First-Layer Corners) — not started. The `eject`/`align`/`insert` pipeline and the placed-aware-preference + cycle-detection pattern are both explicitly flagged (D-046) as worth reusing rather than re-deriving if corners hit a similar preservation problem.
+
+---
+
+## Entry 20 — 2026-08-08 — Phase C, Subsystem 3: First-Layer Corners
+
+**What was built:**
+An investigation against the real Move Engine (same discipline as D-045/D-046) established corners' full state classification (2 layers, 3 orientation states, 21/24 target configurations reachable via just {own1, own2, D}) and derived+verified the 3 terminal insertion algorithms. This investigation itself hit and corrected two of its own methodological errors before reaching production: setup/solve sequences that were coincidentally algebraic inverses of each other (making "preservation" checks meaningless), and a "net face-usage ≡ 0 mod 4" heuristic that turned out necessary but not sufficient for preservation (confirmed by direct replay, not arithmetic) — both errors were caught by insisting on real replay verification rather than trusting reasoning about an algorithm's shape. The corrected search found that, unlike edges' facing-side case, corners' "facing down" case genuinely *can* be fully preserved with a 5-move algorithm — an outcome opposite to the initial (wrong) conclusion. Implemented incrementally with tests at each step, mirroring `whiteCross.ts`'s exact module shape: `cornerGeometry.ts`, `cornerInsertionAlgorithms.ts` (self-verifying, D-027-style), `cornerEjectAndAlign.ts`, `cornerInsertionMoves.ts`, `firstLayerCorners.ts`.
+
+**Problems encountered:**
+- Once wired into the full pipeline, the exhaustive single-move test suite (not fuzzing) immediately caught a real infinite oscillation between two corners: `cornerInsertionAlgorithms.ts`'s own derivation had used a goal test that only checked "target solved", not "target solved AND both same-face siblings AND the cross all still solved" — so it found and cached a short 2-move "coincidental undo" instead of the genuinely-preserving 5-move algorithm already verified by hand during investigation. Fixed by making the derivation's own goal test require full preservation, exactly mirroring what actually matters.
+- After that fix, a second real defect surfaced on the simplest possible case (a bare `U` turn): the diagonal-slot eject case's single foreign-face quarter turn disturbs that face's own white-cross edge, and `solveFirstLayerCorners`'s retry loop had no mechanism to notice or repair a disturbed cross edge (it only tracked corners). Fixed by extending both the retry loop and the cycle-detector's reduced key to cover cross-edge state, repairing a disturbed edge via the already-verified `solveWhiteEdge`.
+- A performance problem, not a correctness one: the self-verifying derivation's own test-fixture construction used an expensive move-based search (up to depth 6 over the full move set), taking ~40 seconds per module load — impractical for routine test runs. Fixed by switching the *fixture construction* (not the algorithm derivation itself) to direct facelet manipulation, the same surgical-construction pattern this codebase's own test helpers (`validator.test.ts`'s `withCornerTwisted`) already use — bringing module load down to ~4 seconds. This fix itself needed one round of debugging: an initial version filled the vacated home slot with the wrong "D-axis" color (`solvedColorOf('D')`, i.e. yellow) instead of the target identity's own actual second color, producing an invalid (unidentifiable) corner.
+
+**How they were solved:**
+- Every fix was validated the same way: construct the exact failing scenario (via search or, once understood, a permanent regression test), verify the fix against real replay, then re-run the full suite.
+
+**Lessons learned:**
+- This is the second subsystem in a row (after D-046) where the exhaustive/regression test suite — not large-scale fuzzing — caught the real defect immediately, and where the defect was specifically in the *verification methodology* (a derivation's own goal test), not in hand-reasoning about cube geometry. The recurring meta-lesson: whenever a self-verifying derivation exists, the derivation's own goal test needs exactly the same scrutiny as the algorithm it's meant to verify — a weak goal test defeats the entire point of self-verification.
+
+**Remaining work:**
+- Phase C, Subsystem 4 (Middle-Layer Edges) — not started. Flagged in D-048 as needing the same "track and repair every tracked piece type together" pattern, since it must preserve both the cross and first-layer corners simultaneously.
+
+---
+
+## Entry 21 — 2026-08-16 — Phase C, Subsystem 4: Second-Layer Edges
+
+**What was built:**
+Reused the `eject`/`align`/`insert` pipeline once more, adapted for a target type with only 2 facelets total (no third "facing D directly" orientation state the way corners have): alignment means rotating D until the piece is "matched" (its side facelet shows the color actually belonging to that face), and a single 8-move `{matchedFace, otherOwnFace, D}` insertion algorithm per matched face is derived and self-verified with full preservation (target + 2 siblings + full cross + full first-layer corners), same discipline as D-045/D-047. New files: `secondLayerGeometry.ts`, `secondLayerEjectAndAlign.ts`, `secondLayerInsertionAlgorithms.ts`, `secondLayerInsertionMoves.ts`, `secondLayerEdges.ts`.
+
+**Problems encountered:**
+- Following D-048's corner-eject pattern exactly (treat "shares exactly one own face" as forced to that single face) produced a genuine, reproducible infinite cycle once wired into the round-robin — not slow convergence, an exact repeated state, correctly caught by the cycle detector on a seeded fuzz trial. Root cause, found by manual round-by-round tracing: the "forced" face was never actually forced. Every E-layer slot touches 2 faces, and the other one is an equally valid eject path — corners' analogous branch happened to work fine at cap 20 because their 3-move insertion causes much less collateral disturbance per operation, but this stage's 8-move insertion made the deterministic fixed-order design fragile enough to actually cycle.
+- Fixing the eject choice (making it a genuine placed-aware 2-way preference) reduced but didn't eliminate cycling — a different seeded scramble immediately cycled again even at a raised cap. Rotating the round-robin's per-round starting point was tried next and specifically failed because the underlying oscillation had period 4, matching the rotation's own period exactly — the rotation synchronized with the cycle instead of breaking it, a genuinely instructive dead end worth remembering for any future periodic-retry design.
+- The actual fix: replace fixed-order processing with greedy least-collateral-disturbance target selection, re-evaluated after every single move (not just once per round). Verified clean across 2000+ seeded trials during debugging plus the permanent 1500-trial regression suite.
+
+**How they were solved:**
+- Each hypothesis (forced-vs-choice, rotation) was tested directly against the real failing scramble via manual tracing before being accepted or discarded, rather than reasoned about abstractly — consistent with this project's standing "trust real replay, not reasoning about an algorithm's shape" discipline.
+
+**Lessons learned:**
+- A fix that removes one cause of a bug (the forced-eject assumption) can still leave the bug present if a second, independent cause (fixed processing order under high collateral-disturbance) is also present — both had to be found and fixed separately here, not just the first one encountered.
+- A periodic mitigation (rotation) can fail specifically *because* it's periodic, if the underlying problem is itself periodic — worth checking for resonance, not just assuming "add variation" fixes an oscillation.
+- Higher move-count algorithms (8 moves vs. 3) meaningfully increase the chance a design pattern that worked at a smaller scale (fixed-order round-robin) breaks down; this is a real signal to watch for in Subsystem 5 (Last-Layer/OLL) if its algorithms are longer still.
+
+**Remaining work:**
+- Phase C, Subsystem 5 (Last-Layer / OLL) — not started. If its insertion algorithms are long, greedy least-disturbance target selection (not fixed-order round-robin) should be the starting design, not something to rediscover after a fuzz failure.
+
+---
+
+## Entry 22 — 2026-09-04 — Phase C, Subsystem 5: Last-Layer Orientation (2-look OLL)
+
+**What was built:**
+The fourth Beginner Method stage, and the first to solve orientation only (not position) — deliberately tracking "solved" per D-layer slot rather than per piece identity, since permutation is Subsystem 6 (PLL)'s job. `lastLayerGeometry.ts` establishes the D-layer slot/face predicates. `lastLayerEdgeOrientationAlgorithms.ts` uses the edge-orientation parity invariant to reduce to 3 cases up to D rotation (Dot, Line, L-shape), deriving and self-verifying algorithms for Line/L-shape via bounded search and solving Dot by reducing to L-shape. `lastLayerCornerOrientationAlgorithms.ts` derives a single general Sune-analogue "step" algorithm via forward-search-then-invert. `lastLayerOrientation.ts` orchestrates both steps, with corner orientation applied via a bounded round-level search over D-rotation offsets rather than a fixed-order loop.
+
+**Problems encountered:**
+- A hand-constructed corner-twist test fixture (twist the target slot, cancel parity on another D slot) turned out not to be reachable within a practical search depth using the natural `{D, own1, own2}` move set — the same "plausible-looking target state isn't actually inside the restricted generator set's reachable orbit" lesson D-045's facing-side case already taught, recurring here for a different stage.
+- A hand-typed "D-for-U" substitution of the well-known Sune algorithm was verified against the real Move Engine per this project's standing rule, and that verification caught a real problem: it disturbed last-layer edges, because D (bottom) and U (top) aren't chirality-neutral substitutes for each other — the D-039 lesson recurring a third time.
+- An initial version of the corner-step derivation's goal test required last-layer edges to stay in the exact same *position*, not just orientation — too strict (position preservation isn't actually required at this stage), and made the search fail to find anything practical. Relaxed to "orientation preserved" and it found a genuine 7-move algorithm almost immediately.
+- A `dCornerTwist` helper (meant to reuse `pieces.ts`'s `cornerOrientation` directly) was found, via direct testing, to be **not slot-invariant**: a single pure D turn — which physically only permutes D-layer corners, never twists them — registered nonzero "twist" at slots other than a piece's own home slot. Root-caused and removed entirely rather than patched, in favor of the already-correct `isLastLayerCornerOriented` boolean.
+- Orchestrating the corner step via pure greedy hill-climbing (always take whichever D-rotation offset most improves the immediate oriented-corner count) converged for only 5 of the 27 possible legal corner-twist patterns — the classic "repeated Sune" plateau. A small bounded round-level search (branching 4, depth <=8, deduplicated) converges all 27/27.
+
+**How they were solved:**
+- Each dead end was diagnosed by direct, concrete testing against the real Move Engine (constructing the exact fixture, applying the exact sequence, inspecting the exact resulting state) rather than by further theorizing about why it should have worked — consistent with this project's standing discipline, and specifically re-applied after an explicit instruction mid-session to stop investigating and verify empirically instead.
+- Once each root cause was identified, the fix was a design correction (forward-search-then-invert instead of hand construction; orientation-only instead of position preservation; boolean orientation check instead of a broken twist-magnitude helper; bounded round search instead of greedy) rather than a patch on top of the broken approach.
+
+**Lessons learned:**
+- The "not every plausible target state is reachable from a restricted generator set" lesson (D-045) and the "U and D aren't chirality-neutral substitutes" lesson (D-039) both recurred in this subsystem, for different algorithms — worth treating as standing risks to check early in any future stage that derives a new algorithm, not one-off surprises.
+- A helper that reuses an existing verified primitive (`cornerOrientation`) is not automatically correct in a new context (a different slot than the primitive's own reference frame) just because the primitive itself is correct — the *combination* still needs its own empirical check, which is exactly what caught `dCornerTwist`'s bug.
+- Greedy hill-climbing is not a safe default for multi-round convergence problems even when a single verified "step" is available; a small bounded search over the actual choice space (here: 4 rotation offsets, replayed via BFS) is barely more expensive and is what actually guarantees convergence.
+
+**Remaining work:**
+- None for Subsystem 5. Phase C, Subsystem 6 (PLL) is the final stage.
+
+---
+
+## Entry 22 — 2026-09-23 — Phase C, Subsystem 6: Last-Layer Permutation & End-to-End Harness
+
+**What was built:**
+The final Beginner Method subsystem (PLL) and the End-to-End Full Solve Correctness Harness. Implemented `lastLayerPermutationGeometry.ts` to identify and map the target identities of last-layer pieces. Implemented `lastLayerPermutationAlgorithms.ts` which successfully mirrored standard U-layer PLL algorithms (A-perm for corners, U-perm for edges) down to the D-layer via geometric transformation and validated them dynamically on load. Wrote the orchestrator in `lastLayerPermutation.ts` applying bounded BFS across D rotations. Completed Phase C by integrating all stages into `lib/solver/beginnerMethod/index.ts` and creating `beginnerMethod.test.ts`.
+
+**Problems encountered:**
+- During transcription, the D-layer mirrored A-perm was initially incorrect due to mistaking D-turns for mirrored F/B turns.
+- A logical misalignment occurred during the edge permutation step: it reached the target permutation goal independently but fell out of alignment with the previously solved corner permutation, destroying the full cube state.
+- Minor TypeScript constraint mismatches (`explanation` vs `description`) causing type-check errors in the stage interface.
+- Lingering cache problems causing vitest to run an older version of the algorithm logic and fail erroneously.
+
+**How they were solved:**
+- Fixed the A-perm logic and re-verified using a dedicated `debugPll.ts` search script to validate the correct behavior without the vitest environment interference.
+- Fixed the edge permutation logic by requiring a joint relative goal evaluation (`isLastLayerPermutedRelative`) for both edges and corners, ensuring they were mutually aligned at the conclusion of the edge step.
+- Resolved interface types to perfectly match `StageSpec`.
+- Ran `vitest run --no-cache` to force full suite execution (1000 scrambles for full solve), resulting in 1,000/1,000 valid solves at ~203 average moves.
+
+**Lessons learned:**
+- Goal evaluations for sequential solver steps (like corner permutation then edge permutation) must encompass the *entire* relevant state to avoid satisfying one at the expense of another. 
+- Fuzz testing against real `MoveEngine` state is vastly superior to structural mock checking, catching relative-alignment edge cases.
+
+**Remaining work:**
+- **Phase C is complete and verified.**
+- **Phase D (3D renderer + interactive 3D Solver + solution animation)** is next.

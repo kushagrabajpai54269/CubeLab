@@ -168,6 +168,37 @@ describe('solveWithStages: the full validate -> clone -> run sequence', () => {
     expect(ran).toBe(false)
   })
 
+  it('a legal scrambled cube passes the gate and does reach stage execution', () => {
+    let ran = false
+    let seenState: CubeState | null = null
+    const scrambled = applyMoves(createSolvedCube(), [U, R, F])
+    const result = solveWithStages(scrambled, [
+      {
+        id: 'a',
+        label: 'a',
+        solve: (state) => {
+          ran = true
+          seenState = state
+          return []
+        },
+      },
+    ])
+    expect(result.success).toBe(true)
+    expect(ran).toBe(true)
+    expect(seenState).not.toBeNull()
+    expect(areCubeStatesEqual(seenState!, scrambled)).toBe(true)
+  })
+
+  it('a valid cube (solved or legally scrambled) does execute every stage in the pipeline, not just some', () => {
+    const calls: string[] = []
+    const result = solveWithStages(createSolvedCube(), [
+      { id: 'a', label: 'a', solve: () => { calls.push('a'); return [] } },
+      { id: 'b', label: 'b', solve: () => { calls.push('b'); return [] } },
+    ])
+    expect(result.success).toBe(true)
+    expect(calls).toEqual(['a', 'b'])
+  })
+
   it('on success, returns a defensively cloned initialState, never the caller\'s own object', () => {
     const input = createSolvedCube()
     const result = solveWithStages(input, [])

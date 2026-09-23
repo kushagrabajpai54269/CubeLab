@@ -54,6 +54,12 @@ export function rejectIfInvalid(state: CubeState): SolveFailure | null {
  * to detect or filter out. Never mutates `initialState`: `applyMoves`
  * already guarantees a fresh CubeState per call (D-027), and this function
  * only ever reads from `initialState`, never writes to it.
+ *
+ * Not part of `lib/solver/index.ts`'s public barrel (D-044): this function
+ * has no validity gate of its own, so `solveWithStages` below is the only
+ * sanctioned entry point for code outside this module. Called directly
+ * here (and by this file's own tests) only because both already know the
+ * input has already passed `rejectIfInvalid`.
  */
 export function runStages(initialState: CubeState, specs: StageSpec[]): SolveStage[] {
   let current = initialState
