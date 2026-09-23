@@ -1,54 +1,112 @@
 # CubeLab
 
-A Rubik's Cube web app: learn, solve, practice, and track your progress. Built
-with Next.js 15 (App Router), React 19, TypeScript (strict), Tailwind, Zustand,
-and React Three Fiber (for the 3D work still ahead).
+**A Rubik’s Cube solver and interactive learning platform, built from the ground up.**
 
-**Status: Phase A and Phase B complete and manually accepted.** See
-`docs/Roadmap.md` for what's built, what's next, and the full phase plan —
-including the planned 3D cube renderer and Sandbox mode.
+CubeLab combines cube logic, visualization, and step-by-step solving to make exploring and solving the Rubik’s Cube easier.
 
-## What's implemented
+## Features
 
-**Phase A — core cube library** (`lib/cube/`): `CubeState`, the Move Engine,
-the Notation Parser, and the Validator — the dependency-free computational
-foundation everything else builds on.
+### Available
 
-**Phase B — Solver input experience** (`/solver/health`): a 2D cube-net input
-UI with color painting, undo/redo, a live legality Health Check with
-problem-sticker highlighting, and facelet-string / algorithm import-export.
-This 2D net is a permanent alternative input/diagnostic tool, not a
-placeholder for the eventual 3D interface (see the Roadmap).
+* **Core cube engine:** Cube state representation, move execution, and notation parsing.
+* **Cube validation:** Check whether a cube state is valid.
+* **2D Cube Net:** Visualize and edit cube stickers.
+* **Move controls:** Undo, redo, highlighting, and state import/export.
+* **Beginner Method Solver:** Solve through the beginner method, including first two layers and last-layer orientation and permutation.
 
-Cube engine, solvers, 3D rendering, real Learn/About/FAQ copy, auth, and
-analytics are all tracked in `docs/Roadmap.md`.
+### Planned
 
-## Project knowledge base
+* **Interactive 3D Cube:** Rotate and interact with a 3D cube.
+* **Step-by-step solving:** Animated solutions with playback controls.
+* **Sandbox Mode:** Freely experiment with cube states and moves.
+* **CFOP Solver:** An additional solving method.
+* **Learning & Practice:** Algorithm encyclopedia, trainer, and guided learning content.
+* **Progress Tracking:** Track practice and solving progress.
 
-Living documentation lives in `docs/`:
-- `Roadmap.md` — phase plan, including the 3D Solver and Sandbox requirements
-- `Decision-Log.md` — numbered architectural decisions (D-001 onward)
-- `Architecture-Notes.md` — how the pieces fit together
-- `Development-Journal.md` — session-by-session narrative
-- `Testing-Log.md` — test coverage by area
-- `Known-Issues.md` — open bugs and technical debt
-- `Refactoring-Log.md` — notable refactors and why
+## Screenshots / Demo
 
-## Getting started
+Screenshots and live demo: *To be added.*
+
+## Tech Stack
+
+- **Framework:** Next.js 15 (App Router)
+- **Language:** TypeScript (strict)
+- **UI:** React 19
+- **Styling:** Tailwind CSS
+- **State Management:** Zustand
+- **Animation:** Framer Motion
+- **Icons:** Lucide React
+- **Testing:** Vitest + JSDOM
+
+**Planned:** Three.js + React Three Fiber for the interactive 3D cube.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js
+- npm
+
+### Installation
 
 ```
+git clone https://github.com/kushagrabajpai54269/CubeLab.git
+cd CubeLab
 npm install
-npm run dev         # http://localhost:3000
-npm test            # vitest, single run
-npm run test:watch  # vitest, watch mode
-npm run typecheck   # tsc --noEmit — see docs/Known-Issues.md for current status
-npm run lint
 ```
 
-To regenerate the Move Engine / Validator's geometric data tables (only ever
-needed if `scripts/derive-move-tables.mjs` itself changes):
+### Environment Variables
+
+No required environment variables have been confirmed. Check the project configuration before adding any.
+
+### Run Locally
+
+```
+npm run dev
+```
+
+### Build and Test
+
 ```
 node scripts/derive-move-tables.mjs
 ```
-This prints the derived `BASE_PERMUTATIONS`, `CORNER_FACELETS`, and
-`EDGE_FACELETS` for manual copy into `lib/cube/tables.ts` — see D-027.
+
+## Project Structure
+
+```
+CubeLab/
+├── lib/
+│   └── solver/
+│       └── beginnerMethod/
+├── docs/
+└── ...
+```
+
+
+## Development Status
+
+| Phase                                           | Status         |
+| ----------------------------------------------- | -------------- |
+| Phase 0                                         | Complete       |
+| Phase A — Cube Engine                           | Complete       |
+| Phase B — 2D Input & Validation                 | Complete       |
+| Phase C — Beginner Method Solver                | Complete       |
+| Phase D — Interactive 3D Solver                 | In development |
+| Phase D2 — Sandbox                              | Planned        |
+| Phase E — CFOP Solver                           | Planned        |
+| Phase F — Algorithms & Practice                 | Planned        |
+| Phase G — Progress & Settings                   | Planned        |
+| Phase H — Auth, SEO & Analytics                 | Planned        |
+| Phase I — Accessibility, Performance & Final QA | Planned        |
+
+## Contributing
+
+CubeLab is currently maintained by its author. Contributions may be considered as the project develops.
+
+## Credits
+
+Built with React, TypeScript, and the open-source libraries used in the project.
+
+## License
+
+No license has been specified yet.
